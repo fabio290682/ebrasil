@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transparência BR</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="container header__inner">
+        <div class="brand">
+          <span class="brand__mark">TB</span>
+          <span class="brand__name">Transparência BR</span>
+        </div>
+        <nav class="nav">
+          <a href="#api" class="nav__link">API</a>
+          <a href="#n8n" class="nav__link">n8n</a>
+          <a href="#contato" class="nav__link">Contato</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h1 class="hero__title">Dados públicos, integração e automação.</h1>
+        <p class="hero__subtitle">
+          Frontend + Backend + n8n para coletar, normalizar e consultar gastos públicos.
+        </p>
+
+        <div class="card">
+          <label class="label" for="apiBase">API Base URL</label>
+          <div class="row">
+            <input id="apiBase" class="input" placeholder="https://SEU-BACKEND.onrender.com" />
+            <button id="saveApi" class="button">Salvar</button>
+          </div>
+          <p class="hint">
+            Dica: se você hospedar no Render, use a URL do serviço <code>ebrasil-backend</code>.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="metric">
+            <h3 class="metric__label">Status</h3>
+            <p id="status" class="metric__value">—</p>
+          </article>
+          <article class="metric">
+            <h3 class="metric__label">Resumo</h3>
+            <p id="resumo" class="metric__value">—</p>
+          </article>
+          <article class="metric">
+            <h3 class="metric__label">Últimos gastos</h3>
+            <p id="ultimos" class="metric__value">—</p>
+          </article>
+        </div>
+
+        <div class="row row--wrap">
+          <button id="checkHealth" class="button button--ghost">Testar /health</button>
+          <button id="loadResumo" class="button button--ghost">Carregar resumo</button>
+          <button id="loadGastos" class="button button--ghost">Carregar gastos</button>
+        </div>
+      </section>
+
+      <section id="api" class="section">
+        <h2>API</h2>
+        <p>
+          Documentação Swagger em <code>/docs</code>. Endpoints principais:
+          <code>/health</code>, <code>/api/v1/gastos</code>, <code>/api/v1/gastos/resumo</code>.
+        </p>
+      </section>
+
+      <section id="n8n" class="section">
+        <h2>n8n</h2>
+        <p>
+          O n8n roda separado (serviço <code>ebrasil-n8n</code>) e usa Postgres próprio para metadados.
+          Os normalizadores ficam em <code>n8n/code/</code> (ex.: <code>normalizador_ministerios.js</code>).
+        </p>
+      </section>
+
+      <section id="contato" class="section">
+        <h2>Contato</h2>
+        <p>Repositório: <a href="https://github.com/fabio290682/ebrasil">github.com/fabio290682/ebrasil</a></p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer__inner">
+        <span>© Transparência BR</span>
+        <span class="muted">Hospedado via GitHub Pages</span>
+      </div>
+    </footer>
+
+    <script>
+      const STORAGE_KEY = 'ebrasil_api_base'
+      const apiBaseEl = document.getElementById('apiBase')
+      const statusEl = document.getElementById('status')
+      const resumoEl = document.getElementById('resumo')
+      const ultimosEl = document.getElementById('ultimos')
+
+      function getBase() {
+        const raw = (localStorage.getItem(STORAGE_KEY) || '').trim()
+        return raw.replace(/\/+$/, '')
+      }
+
+      function setBase(value) {
+        localStorage.setItem(STORAGE_KEY, String(value || '').trim())
+      }
+
+      function apiPath(path) {
+        const base = getBase()
+        if (!base) return null
+        return `${base}${path}`
+      }
+
+      function setText(el, text) {
+        el.textContent = text
+      }
+
+      async function fetchJson(url) {
+        const res = await fetch(url, { headers: { Accept: 'application/json' } })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      }
+
+      async function checkHealth() {
+        const url = apiPath('/health')
+        if (!url) return setText(statusEl, 'Defina a API Base URL')
+        setText(statusEl, 'Carregando…')
+        try {
+          const data = await fetchJson(url)
+          setText(statusEl, data.status || 'ok')
+        } catch (err) {
+          setText(statusEl, `Falha: ${err.message || err}`)
+        }
+      }
+
+      async function loadResumo() {
+        const url = apiPath('/api/v1/gastos/resumo')
+        if (!url) return setText(resumoEl, 'Defina a API Base URL')
+        setText(resumoEl, 'Carregando…')
+        try {
+          const data = await fetchJson(url)
+          const total = Number(data.total_empenhado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          setText(resumoEl, `${total} • ${data.quantidade_registros || 0} registros`)
+        } catch (err) {
+          setText(resumoEl, `Falha: ${err.message || err}`)
+        }
+      }
+
+      async function loadGastos() {
+        const url = apiPath('/api/v1/gastos?page=1&page_size=5')
+        if (!url) return setText(ultimosEl, 'Defina a API Base URL')
+        setText(ultimosEl, 'Carregando…')
+        try {
+          const data = await fetchJson(url)
+          const items = Array.isArray(data.items) ? data.items : []
+          if (items.length === 0) return setText(ultimosEl, 'Sem itens')
+          const line = items
+            .map((x) => `${(x.data_empenho || '').slice(0, 10)} • ${x.favorecido_nome || '—'} • ${Number(x.valor_empenhado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`)
+            .join(' | ')
+          setText(ultimosEl, line)
+        } catch (err) {
+          setText(ultimosEl, `Falha: ${err.message || err}`)
+        }
+      }
+
+      document.getElementById('saveApi').addEventListener('click', () => {
+        setBase(apiBaseEl.value)
+        checkHealth()
+      })
+      document.getElementById('checkHealth').addEventListener('click', checkHealth)
+      document.getElementById('loadResumo').addEventListener('click', loadResumo)
+      document.getElementById('loadGastos').addEventListener('click', loadGastos)
+
+      apiBaseEl.value = getBase()
+      checkHealth()
+    </script>
+  </body>
+</html>
+
