@@ -1,0 +1,238 @@
+{
+  "name": "Integracao Nacional Dinamica - Transparencia",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron_1",
+      "name": "Cron 02h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        180,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM fontes_transparencia WHERE ativo = true ORDER BY id;"
+      },
+      "id": "pg_fontes",
+      "name": "Lista Fontes Ativas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        410,
+        280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres Transparencia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "split_batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        650,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{$json.metodo_http || 'GET'}}",
+        "url": "={{$json.url_base + ($json.path_endpoint || '')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "dataInicio",
+              "value": "={{$now.minus({ days: 1 }).toFormat('yyyy-MM-dd')}}"
+            },
+            {
+              "name": "dataFim",
+              "value": "={{$now.minus({ days: 1 }).toFormat('yyyy-MM-dd')}}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          },
+          "timeout": "={{$json.timeout_ms || 30000}}"
+        }
+      },
+      "id": "http_coleta",
+      "name": "Coleta Fonte Dinamica",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        280
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const saida = [];\nfor (const i of items) {\n  const fonte = i.json;\n  const payload = i.json.content || i.json.data || i.json.items || i.json;\n  if (Array.isArray(payload)) {\n    for (const row of payload) {\n      saida.push({ json: { fonte, payload: row } });\n    }\n  } else {\n    saida.push({ json: { fonte, payload } });\n  }\n}\nreturn saida;"
+      },
+      "id": "explode_payload",
+      "name": "Preparar Registros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function pick(obj, paths, fallback = null) { for (const path of paths) { const parts = path.split('.'); let value = obj; let ok = true; for (const p of parts) { if (value && Object.prototype.hasOwnProperty.call(value, p)) value = value[p]; else { ok = false; break; } } if (ok && value !== undefined && value !== null && value !== '') return value; } return fallback; }\nfunction onlyDigits(v) { return String(v || '').replace(/\\D/g, ''); }\nfunction toNumber(value) { if (typeof value === 'number') return value; if (!value) return 0; const normalized = String(value).replace(/R\\$\\s?/g, '').replace(/\\./g, '').replace(',', '.').trim(); const n = Number(normalized); return Number.isFinite(n) ? n : 0; }\nfunction toISODate(v) { if (!v) return null; const str = String(v).trim(); if (/^\\d{4}-\\d{2}-\\d{2}/.test(str)) return str.slice(0, 10); const br = str.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/); if (br) return `${br[3]}-${br[2]}-${br[1]}`; return null; }\nfunction buildId(raw, fonte) { const base = pick(raw, ['id', 'id_transacao', 'hash']) || `${pick(raw, ['numero_empenho', 'num_empenho', 'numero'], 'sem_numero')}:${pick(raw, ['data_empenho', 'dt_emissao', 'data_gasto'], 'sem_data')}:${pick(raw, ['valor_empenhado', 'valor_pago', 'total'], '0')}:${fonte?.municipio_ibge || '0000000'}`; return `${fonte?.id || 'fonte'}:${String(base).slice(0, 180)}`; }\nconst out = [];\nfor (const item of items) { const fonte = item.json.fonte || {}; const raw = item.json.payload || item.json; const map = fonte.mapeamento_campos || {}; out.push({ json: { id_transacao: buildId(raw, fonte), fonte_id: fonte.id || null, data_empenho: toISODate(pick(raw, [map.data_empenho].filter(Boolean).concat(['data_empenho','dataEmpenho','dt_emissao','data_gasto']))), valor_empenhado: toNumber(pick(raw, [map.valor_empenhado].filter(Boolean).concat(['valor_empenhado','valorEmpenho','valor_pago','total']), 0)), favorecido_nome: pick(raw, [map.favorecido_nome].filter(Boolean).concat(['favorecido_nome','fornecedor.nomeRazaoSocial','credor','razao_social']), 'NAO INFORMADO'), favorecido_cnpj_cpf: onlyDigits(pick(raw, [map.favorecido_cnpj_cpf].filter(Boolean).concat(['favorecido_cnpj_cpf','fornecedor.cpfCnpj','cpf_cnpj']), '')), elemento_despesa: String(pick(raw, [map.elemento_despesa].filter(Boolean).concat(['elemento_despesa','elementoDespesa.codigo']), '')).replace(/\\./g, ''), fonte_recurso: pick(raw, [map.fonte_recurso].filter(Boolean).concat(['fonte_recurso','fonteRecurso.codigo']), null), funcao_governo: pick(raw, [map.funcao_governo].filter(Boolean).concat(['funcao_governo','funcao.descricao']), null), numero_empenho: String(pick(raw, [map.numero_empenho].filter(Boolean).concat(['numero_empenho','num_empenho','numero']), '')), municipio_nome: fonte.municipio_nome || pick(raw, ['municipio','cidade_nome'], null), municipio_ibge: String(fonte.municipio_ibge || pick(raw, ['municipio_ibge'], '')).padStart(7, '0'), uf: String(fonte.uf || pick(raw, ['uf'], '')).toUpperCase().slice(0,2), fornecedor_sistema: fonte.sistema_fornecedor || null, url_origem: fonte.url_base || null, atualizado_em: new Date().toISOString(), payload_origem: raw } }); }\nreturn out;"
+      },
+      "id": "normaliza",
+      "name": "Normalizar Schema Unico",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1390,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO gastos_publicos_unificados (id_transacao, fonte_id, data_empenho, valor_empenhado, favorecido_nome, favorecido_cnpj_cpf, elemento_despesa, fonte_recurso, funcao_governo, numero_empenho, municipio_nome, municipio_ibge, uf, fornecedor_sistema, url_origem, atualizado_em, payload_origem)\nVALUES (\n  {{$json.id_transacao ? `'${$json.id_transacao.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.fonte_id || 'NULL'}},\n  {{$json.data_empenho ? `'${$json.data_empenho}'` : 'NULL'}},\n  {{$json.valor_empenhado || 0}},\n  {{$json.favorecido_nome ? `'${$json.favorecido_nome.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.favorecido_cnpj_cpf ? `'${$json.favorecido_cnpj_cpf}'` : 'NULL'}},\n  {{$json.elemento_despesa ? `'${$json.elemento_despesa}'` : 'NULL'}},\n  {{$json.fonte_recurso ? `'${$json.fonte_recurso}'` : 'NULL'}},\n  {{$json.funcao_governo ? `'${$json.funcao_governo.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.numero_empenho ? `'${$json.numero_empenho}'` : 'NULL'}},\n  {{$json.municipio_nome ? `'${$json.municipio_nome.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.municipio_ibge ? `'${$json.municipio_ibge}'` : 'NULL'}},\n  {{$json.uf ? `'${$json.uf}'` : 'NULL'}},\n  {{$json.fornecedor_sistema ? `'${$json.fornecedor_sistema}'` : 'NULL'}},\n  {{$json.url_origem ? `'${$json.url_origem}'` : 'NULL'}},\n  NOW(),\n  {{$json.payload_origem ? `'${JSON.stringify($json.payload_origem).replace(/'/g, \"''\")}'::jsonb` : 'NULL'}}\n)\nON CONFLICT (id_transacao)\nDO UPDATE SET\n  valor_empenhado = EXCLUDED.valor_empenhado,\n  favorecido_nome = EXCLUDED.favorecido_nome,\n  atualizado_em = NOW(),\n  payload_origem = EXCLUDED.payload_origem;"
+      },
+      "id": "pg_upsert",
+      "name": "Upsert Gastos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1640,
+        280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres Transparencia"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron 02h": {
+      "main": [
+        [
+          {
+            "node": "Lista Fontes Ativas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lista Fontes Ativas": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Coleta Fonte Dinamica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coleta Fonte Dinamica": {
+      "main": [
+        [
+          {
+            "node": "Preparar Registros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Registros": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Schema Unico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Schema Unico": {
+      "main": [
+        [
+          {
+            "node": "Upsert Gastos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Gastos": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "active": false,
+  "id": "integracao_nacional_dinamica",
+  "tags": []
+}

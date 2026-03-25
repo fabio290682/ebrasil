@@ -1,0 +1,30 @@
+﻿:root {
+  font-family: Manrope, 'Segoe UI', sans-serif;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: #061019;
+  color: #e7f4fb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}

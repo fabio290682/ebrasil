@@ -1,0 +1,106 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3BrasilTech - Plataforma de Transparencia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./dashboard_transparencia.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para conteudo principal</a>
+  <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
+
+  <aside id="sidebar" class="sidebar" aria-label="Navegacao principal">
+    <div class="logo-area">
+      <div class="logo-3brasil">3BrasilTech</div>
+      <p class="logo-sub">TRANSPARENCIA PUBLICA INTEGRADA</p>
+    </div>
+
+    <nav>
+      <ul class="menu-list">
+        <li><button class="menu-btn active" data-view="overview">Visao Geral</button></li>
+        <li><button class="menu-btn" data-view="search">Busca Avancada</button></li>
+        <li><button class="menu-btn" data-view="parliament">Parlamentares</button></li>
+        <li><button class="menu-btn" data-view="cities">Municipios</button></li>
+        <li><button class="menu-btn" data-view="reports">Relatorios</button></li>
+        <li><button class="menu-btn" data-view="settings">Configuracoes</button></li>
+      </ul>
+    </nav>
+
+    <div class="status-box">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span>Sistema online</span>
+    </div>
+  </aside>
+
+  <main id="conteudo">
+    <section class="hero-card">
+      <div>
+        <p class="eyebrow">Painel nacional</p>
+        <h1>Dashboard de Gastos Publicos</h1>
+        <p class="hero-sub">Monitoramento consolidado de despesas em tempo quase real.</p>
+      </div>
+      <div class="user-nav">
+        <label class="sr-only" for="filtro-global">Filtro global</label>
+        <select id="filtro-global" class="btn-header">
+          <option value="">Todos os poderes</option>
+          <option value="Executivo Federal">Executivo federal</option>
+          <option value="Legislativo Federal">Legislativo federal</option>
+          <option value="Municipal">Municipal</option>
+        </select>
+        <button id="export-csv" class="btn-header btn-accent">Exportar CSV</button>
+      </div>
+    </section>
+
+    <section class="kpi-container" aria-label="Indicadores principais">
+      <article class="card kpi-card">
+        <h2>Total Empenhado</h2>
+        <div class="value" id="kpi-total">R$ 0,00</div>
+        <div class="trend">Atualizacao automatica</div>
+      </article>
+      <article class="card kpi-card">
+        <h2>Gastos Parlamentares</h2>
+        <div class="value" id="kpi-parlamentar">R$ 0,00</div>
+        <div class="trend">Deputados + senadores</div>
+      </article>
+      <article class="card kpi-card">
+        <h2>Municipios Ativos</h2>
+        <div class="value" id="kpi-municipios">0</div>
+        <div class="trend">Integracoes ativas</div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="card">
+        <h2>Ultimas transacoes</h2>
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption class="sr-only">Tabela de transacoes filtradas</caption>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Ente / Agente</th>
+                <th>Favorecido</th>
+                <th>Categoria</th>
+                <th>Valor</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Distribuicao por poder</h2>
+        <canvas id="chart" width="360" height="240" aria-label="Grafico de distribuicao por poder" role="img"></canvas>
+      </article>
+    </section>
+  </main>
+
+  <script src="./dashboard_transparencia.js"></script>
+</body>
+</html>

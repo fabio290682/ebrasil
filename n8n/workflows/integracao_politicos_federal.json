@@ -1,0 +1,273 @@
+{
+  "name": "Integracao Politicos Federais - CEAP e Ministerios",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Cron 02h30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        120,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://dadosabertos.camara.leg.br/api/v2/deputados",
+        "options": {}
+      },
+      "id": "http_camara",
+      "name": "Camara - Deputados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www12.senado.leg.br/dados-abertos/senador/lista/atual",
+        "options": {}
+      },
+      "id": "http_senado",
+      "name": "Senado - Lista Atual",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.portaldatransparencia.gov.br/api-de-dados/despesas/por-orgao-superior",
+        "options": {}
+      },
+      "id": "http_ministerios",
+      "name": "Ministerios - Despesas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// n8n Code Node - Normalizador CEAP (Camara dos Deputados)\n// Entrada: itens da API da Camara em item.json (registro individual)\n\nfunction toISODate(v) {\n  if (!v) return null;\n  const s = String(v);\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  const br = s.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);\n  if (br) return `${br[3]}-${br[2]}-${br[1]}`;\n  return null;\n}\n\nfunction toNumber(v) {\n  if (typeof v === 'number') return v;\n  if (!v) return 0;\n  const n = Number(String(v).replace(/\\./g, '').replace(',', '.'));\n  return Number.isFinite(n) ? n : 0;\n}\n\nconst out = [];\nfor (const item of items) {\n  const raw = item.json;\n  const idBase = raw.codDocumento || raw.numDocumento || raw.urlDocumento || raw.id;\n  const id = `camara:${idBase || `${raw.dataDocumento || 'sem_data'}:${raw.valorLiquido || 0}`}`;\n\n  out.push({\n    json: {\n      id_transacao: id,\n      fonte_id: raw.fonte_id || null,\n      categoria_origem: 'Legislativo Federal',\n      agente_publico: raw.nomeParlamentar || raw.nomeDeputado || null,\n      partido: raw.siglaPartido || null,\n      tipo_despesa: raw.tipoDespesa || raw.descricao || 'Cota Parlamentar',\n      data_empenho: toISODate(raw.dataDocumento || raw.dataEmissao || raw.anoMes),\n      valor_empenhado: toNumber(raw.valorLiquido ?? raw.valorDocumento ?? raw.valorGlosa ?? 0),\n      favorecido_nome: raw.nomeFornecedor || raw.fornecedor || 'NAO INFORMADO',\n      favorecido_cnpj_cpf: String(raw.cnpjCpfFornecedor || '').replace(/\\D/g, ''),\n      elemento_despesa: 'CEAP',\n      fonte_recurso: 'Cota para Exercicio da Atividade Parlamentar',\n      funcao_governo: 'Legislativo',\n      numero_empenho: String(raw.numDocumento || raw.codDocumento || ''),\n      municipio_nome: 'Brasilia',\n      municipio_ibge: '5300108',\n      uf: 'DF',\n      fornecedor_sistema: 'Camara API',\n      url_origem: 'https://dadosabertos.camara.leg.br/api/v2',\n      atualizado_em: new Date().toISOString(),\n      payload_origem: raw\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "norm_camara",
+      "name": "Normalizar Camara CEAP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// n8n Code Node - Normalizador CEAPS (Senado Federal)\n// Entrada: itens da API do Senado em item.json (registro individual)\n\nfunction toISODate(v) {\n  if (!v) return null;\n  const s = String(v).trim();\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  const br = s.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);\n  if (br) return `${br[3]}-${br[2]}-${br[1]}`;\n  return null;\n}\n\nfunction toNumber(v) {\n  if (typeof v === 'number') return v;\n  if (!v) return 0;\n  const n = Number(String(v).replace(/\\./g, '').replace(',', '.'));\n  return Number.isFinite(n) ? n : 0;\n}\n\nconst out = [];\nfor (const item of items) {\n  const raw = item.json;\n  const idBase = raw.idDespesa || raw.documento || raw.hash || `${raw.data || 'sem_data'}:${raw.valor || 0}`;\n  out.push({\n    json: {\n      id_transacao: `senado:${idBase}`,\n      fonte_id: raw.fonte_id || null,\n      categoria_origem: 'Legislativo Federal',\n      agente_publico: raw.nomeSenador || raw.senador || null,\n      partido: raw.siglaPartido || raw.partido || null,\n      tipo_despesa: raw.tipoDespesa || raw.descricao || 'Cota Parlamentar',\n      data_empenho: toISODate(raw.data || raw.dataDocumento),\n      valor_empenhado: toNumber(raw.valor || raw.valorLiquido || 0),\n      favorecido_nome: raw.fornecedor || raw.nomeFornecedor || 'NAO INFORMADO',\n      favorecido_cnpj_cpf: String(raw.cnpjCpf || '').replace(/\\D/g, ''),\n      elemento_despesa: 'CEAPS',\n      fonte_recurso: 'Cota para Exercicio da Atividade Parlamentar',\n      funcao_governo: 'Legislativo',\n      numero_empenho: String(raw.documento || ''),\n      municipio_nome: 'Brasilia',\n      municipio_ibge: '5300108',\n      uf: 'DF',\n      fornecedor_sistema: 'Senado API',\n      url_origem: 'https://www12.senado.leg.br/dados-abertos',\n      atualizado_em: new Date().toISOString(),\n      payload_origem: raw\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "norm_senado",
+      "name": "Normalizar Senado CEAPS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// n8n Code Node - Normalizador de despesas de Ministerios (Executivo Federal)\n// Entrada: itens da API do Portal da Transparencia em item.json (registro individual)\n\nfunction toISODate(v) {\n  if (!v) return null;\n  const s = String(v).trim();\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  const br = s.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);\n  if (br) return `${br[3]}-${br[2]}-${br[1]}`;\n  return null;\n}\n\nfunction toNumber(v) {\n  if (typeof v === 'number') return v;\n  if (!v) return 0;\n  const n = Number(String(v).replace(/\\./g, '').replace(',', '.'));\n  return Number.isFinite(n) ? n : 0;\n}\n\nconst out = [];\nfor (const item of items) {\n  const raw = item.json;\n  const idBase = raw.id || raw.numeroDocumento || raw.codigoDocumento || `${raw.data || 'sem_data'}:${raw.valor || 0}`;\n  out.push({\n    json: {\n      id_transacao: `ministerio:${idBase}`,\n      fonte_id: raw.fonte_id || null,\n      categoria_origem: 'Executivo Federal',\n      agente_publico: raw.nomeOrgaoSuperior || raw.ministerio || null,\n      partido: null,\n      tipo_despesa: raw.categoriaDespesa || raw.elementoDespesa || raw.descricao || null,\n      data_empenho: toISODate(raw.data || raw.dataDocumento || raw.dataEmissao),\n      valor_empenhado: toNumber(raw.valor || raw.valorEmpenhado || raw.valorPago || 0),\n      favorecido_nome: raw.favorecido || raw.nomeFavorecido || raw.fornecedor || 'NAO INFORMADO',\n      favorecido_cnpj_cpf: String(raw.cpfCnpj || raw.documentoFavorecido || '').replace(/\\D/g, ''),\n      elemento_despesa: raw.elementoDespesa || null,\n      fonte_recurso: raw.fonteRecurso || null,\n      funcao_governo: raw.funcao || 'Executivo',\n      numero_empenho: String(raw.numeroEmpenho || raw.numeroDocumento || ''),\n      municipio_nome: 'Brasilia',\n      municipio_ibge: '5300108',\n      uf: 'DF',\n      fornecedor_sistema: 'Portal Transparencia API',\n      url_origem: 'https://api.portaldatransparencia.gov.br',\n      atualizado_em: new Date().toISOString(),\n      payload_origem: raw\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "norm_ministerios",
+      "name": "Normalizar Ministerios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "merge_1",
+      "name": "Merge Camara + Senado",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        870,
+        210
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "merge_2",
+      "name": "Merge Tudo",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1110,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO gastos_publicos_unificados (id_transacao, fonte_id, categoria_origem, agente_publico, partido, tipo_despesa, data_empenho, valor_empenhado, favorecido_nome, favorecido_cnpj_cpf, elemento_despesa, fonte_recurso, funcao_governo, numero_empenho, municipio_nome, municipio_ibge, uf, fornecedor_sistema, url_origem, atualizado_em, payload_origem)\nVALUES (\n  {{$json.id_transacao ? `'${$json.id_transacao.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.fonte_id || 'NULL'}},\n  {{$json.categoria_origem ? `'${$json.categoria_origem.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.agente_publico ? `'${$json.agente_publico.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.partido ? `'${$json.partido.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.tipo_despesa ? `'${$json.tipo_despesa.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.data_empenho ? `'${$json.data_empenho}'` : 'NULL'}},\n  {{$json.valor_empenhado || 0}},\n  {{$json.favorecido_nome ? `'${$json.favorecido_nome.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.favorecido_cnpj_cpf ? `'${$json.favorecido_cnpj_cpf}'` : 'NULL'}},\n  {{$json.elemento_despesa ? `'${$json.elemento_despesa}'` : 'NULL'}},\n  {{$json.fonte_recurso ? `'${$json.fonte_recurso}'` : 'NULL'}},\n  {{$json.funcao_governo ? `'${$json.funcao_governo.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.numero_empenho ? `'${$json.numero_empenho}'` : 'NULL'}},\n  {{$json.municipio_nome ? `'${$json.municipio_nome.replace(/'/g, \"''\")}'` : 'NULL'}},\n  {{$json.municipio_ibge ? `'${$json.municipio_ibge}'` : 'NULL'}},\n  {{$json.uf ? `'${$json.uf}'` : 'NULL'}},\n  {{$json.fornecedor_sistema ? `'${$json.fornecedor_sistema}'` : 'NULL'}},\n  {{$json.url_origem ? `'${$json.url_origem}'` : 'NULL'}},\n  NOW(),\n  {{$json.payload_origem ? `'${JSON.stringify($json.payload_origem).replace(/'/g, \"''\")}'::jsonb` : 'NULL'}}\n)\nON CONFLICT (id_transacao)\nDO UPDATE SET\n  categoria_origem = EXCLUDED.categoria_origem,\n  agente_publico = EXCLUDED.agente_publico,\n  partido = EXCLUDED.partido,\n  tipo_despesa = EXCLUDED.tipo_despesa,\n  valor_empenhado = EXCLUDED.valor_empenhado,\n  favorecido_nome = EXCLUDED.favorecido_nome,\n  atualizado_em = NOW(),\n  payload_origem = EXCLUDED.payload_origem;"
+      },
+      "id": "upsert",
+      "name": "Upsert Politicos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1360,
+        280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres Transparencia"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron 02h30": {
+      "main": [
+        [
+          {
+            "node": "Camara - Deputados",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Senado - Lista Atual",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ministerios - Despesas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Camara - Deputados": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Camara CEAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Senado - Lista Atual": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Senado CEAPS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ministerios - Despesas": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Ministerios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Camara CEAP": {
+      "main": [
+        [
+          {
+            "node": "Merge Camara + Senado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Senado CEAPS": {
+      "main": [
+        [
+          {
+            "node": "Merge Camara + Senado",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Camara + Senado": {
+      "main": [
+        [
+          {
+            "node": "Merge Tudo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Ministerios": {
+      "main": [
+        [
+          {
+            "node": "Merge Tudo",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Tudo": {
+      "main": [
+        [
+          {
+            "node": "Upsert Politicos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "active": false,
+  "id": "integracao_politicos_federal",
+  "tags": []
+}

@@ -1,0 +1,171 @@
+﻿{
+  "name": "Integracao Nacional com IA - Transparencia",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron_ia",
+      "name": "Cron 4h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [180, 280]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM fontes_transparencia WHERE ativo = true ORDER BY id;"
+      },
+      "id": "pg_fontes_ia",
+      "name": "Lista Fontes Ativas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [420, 280],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres Transparencia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "split_batches_ia",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [650, 280]
+    },
+    {
+      "parameters": {
+        "method": "={{$json.metodo_http || 'GET'}}",
+        "url": "={{$json.url_base + ($json.path_endpoint || '')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": "={{$json.timeout_ms || 30000}}"
+        }
+      },
+      "id": "http_coleta_ia",
+      "name": "Coleta Fonte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 280],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const saida = [];\nfor (const i of items) {\n  const fonte = i.json;\n  const payload = i.json.content || i.json.data || i.json.items || i.json;\n  const arr = Array.isArray(payload) ? payload : [payload];\n  for (const row of arr) {\n    saida.push({ json: { fonte, payload: row } });\n  }\n}\nreturn saida;"
+      },
+      "id": "explode_ia",
+      "name": "Preparar Registros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 280]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function pick(obj, paths, fallback = null) { for (const path of paths) { const parts = path.split('.'); let value = obj; let ok = true; for (const p of parts) { if (value && Object.prototype.hasOwnProperty.call(value, p)) value = value[p]; else { ok = false; break; } } if (ok && value !== undefined && value !== null && value !== '') return value; } return fallback; }\nfunction onlyDigits(v) { return String(v || '').replace(/\\D/g, ''); }\nfunction toNumber(value) { if (typeof value === 'number') return value; if (!value) return 0; const normalized = String(value).replace(/R\\$\\s?/g, '').replace(/\\./g, '').replace(',', '.').trim(); const n = Number(normalized); return Number.isFinite(n) ? n : 0; }\nfunction toISODate(v) { if (!v) return null; const str = String(v).trim(); if (/^\\d{4}-\\d{2}-\\d{2}/.test(str)) return str.slice(0, 10); const br = str.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/); if (br) return `${br[3]}-${br[2]}-${br[1]}`; return null; }\nfunction buildId(raw, fonte) { const base = pick(raw, ['id', 'id_transacao', 'hash']) || `${pick(raw, ['numero_empenho', 'num_empenho', 'numero'], 'sem_numero')}:${pick(raw, ['data_empenho', 'dt_emissao', 'data_gasto'], 'sem_data')}:${pick(raw, ['valor_empenhado', 'valor_pago', 'total'], '0')}:${fonte?.municipio_ibge || '0000000'}`; return `${fonte?.id || 'fonte'}:${String(base).slice(0, 180)}`; }\nconst out = [];\nfor (const item of items) { const fonte = item.json.fonte || {}; const raw = item.json.payload || item.json; out.push({ json: { id_transacao: buildId(raw, fonte), fonte_id: fonte.id || null, data_empenho: toISODate(pick(raw, ['data_empenho','dataEmpenho','dt_emissao','data_gasto'])), valor_empenhado: toNumber(pick(raw, ['valor_empenhado','valorEmpenho','valor_pago','total'], 0)), favorecido_nome: pick(raw, ['favorecido_nome','fornecedor.nomeRazaoSocial','credor','razao_social'], 'NAO INFORMADO'), favorecido_cnpj_cpf: onlyDigits(pick(raw, ['favorecido_cnpj_cpf','fornecedor.cpfCnpj','cpf_cnpj'], '')), elemento_despesa: String(pick(raw, ['elemento_despesa','elementoDespesa.codigo'], '')).replace(/\\./g, ''), funcao_governo: pick(raw, ['funcao_governo','funcao.descricao'], null), municipio_nome: fonte.municipio_nome || pick(raw, ['municipio','cidade_nome'], null), municipio_ibge: String(fonte.municipio_ibge || pick(raw, ['municipio_ibge'], '')).padStart(7, '0'), uf: String(fonte.uf || pick(raw, ['uf'], '')).toUpperCase().slice(0,2), fornecedor_sistema: fonte.sistema_fornecedor || null, url_origem: fonte.url_base || null, payload_origem: raw } }); }\nreturn out;"
+      },
+      "id": "normaliza_ia",
+      "name": "Normalizar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1370, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"model\":\"gpt-4.1-mini\",\"input\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"Classifique despesa publica. Retorne JSON estrito com campos categoria_ia, risco_ia (baixo|medio|alto), justificativa_ia curta.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"{{$json.favorecido_nome}} | {{$json.funcao_governo || ''}} | {{$json.elemento_despesa || ''}} | {{$json.valor_empenhado}}\"}]}],\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"classificacao\",\"schema\":{\"type\":\"object\",\"properties\":{\"categoria_ia\":{\"type\":\"string\"},\"risco_ia\":{\"type\":\"string\",\"enum\":[\"baixo\",\"medio\",\"alto\"]},\"justificativa_ia\":{\"type\":\"string\"}},\"required\":[\"categoria_ia\",\"risco_ia\",\"justificativa_ia\"],\"additionalProperties\":false}}}}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ia_classifica",
+      "name": "IA Classifica",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 280],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nfor (const item of items) {\n  const j = item.json;\n  let parsed = { categoria_ia: 'nao_classificado', risco_ia: 'medio', justificativa_ia: 'IA indisponivel' };\n  try {\n    const txt = j.output?.[0]?.content?.[0]?.text;\n    if (txt) parsed = JSON.parse(txt);\n  } catch (_e) {}\n  out.push({ json: { ...j, ...parsed } });\n}\nreturn out;"
+      },
+      "id": "merge_ia",
+      "name": "Aplicar Enriquecimento IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 280]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO gastos_publicos_unificados (id_transacao, fonte_id, data_empenho, valor_empenhado, favorecido_nome, favorecido_cnpj_cpf, elemento_despesa, funcao_governo, municipio_nome, municipio_ibge, uf, fornecedor_sistema, url_origem, categoria_ia, risco_ia, justificativa_ia, atualizado_em, payload_origem) VALUES ({{$json.id_transacao ? `'${$json.id_transacao.replace(/'/g, \"''\")}'` : 'NULL'}}, {{$json.fonte_id || 'NULL'}}, {{$json.data_empenho ? `'${$json.data_empenho}'` : 'NULL'}}, {{$json.valor_empenhado || 0}}, {{$json.favorecido_nome ? `'${$json.favorecido_nome.replace(/'/g, \"''\")}'` : 'NULL'}}, {{$json.favorecido_cnpj_cpf ? `'${$json.favorecido_cnpj_cpf}'` : 'NULL'}}, {{$json.elemento_despesa ? `'${$json.elemento_despesa}'` : 'NULL'}}, {{$json.funcao_governo ? `'${$json.funcao_governo.replace(/'/g, \"''\")}'` : 'NULL'}}, {{$json.municipio_nome ? `'${$json.municipio_nome.replace(/'/g, \"''\")}'` : 'NULL'}}, {{$json.municipio_ibge ? `'${$json.municipio_ibge}'` : 'NULL'}}, {{$json.uf ? `'${$json.uf}'` : 'NULL'}}, {{$json.fornecedor_sistema ? `'${$json.fornecedor_sistema}'` : 'NULL'}}, {{$json.url_origem ? `'${$json.url_origem}'` : 'NULL'}}, {{$json.categoria_ia ? `'${$json.categoria_ia.replace(/'/g, \"''\")}'` : 'NULL'}}, {{$json.risco_ia ? `'${$json.risco_ia}'` : 'NULL'}}, {{$json.justificativa_ia ? `'${$json.justificativa_ia.replace(/'/g, \"''\")}'` : 'NULL'}}, NOW(), {{$json.payload_origem ? `'${JSON.stringify($json.payload_origem).replace(/'/g, \"''\")}'::jsonb` : 'NULL'}}) ON CONFLICT (id_transacao) DO UPDATE SET valor_empenhado = EXCLUDED.valor_empenhado, categoria_ia = EXCLUDED.categoria_ia, risco_ia = EXCLUDED.risco_ia, justificativa_ia = EXCLUDED.justificativa_ia, atualizado_em = NOW(), payload_origem = EXCLUDED.payload_origem;"
+      },
+      "id": "pg_upsert_ia",
+      "name": "Upsert com IA",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2080, 280],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres Transparencia"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron 4h": { "main": [[{ "node": "Lista Fontes Ativas", "type": "main", "index": 0 }]] },
+    "Lista Fontes Ativas": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]] },
+    "Split In Batches": { "main": [[{ "node": "Coleta Fonte", "type": "main", "index": 0 }]] },
+    "Coleta Fonte": { "main": [[{ "node": "Preparar Registros", "type": "main", "index": 0 }]] },
+    "Preparar Registros": { "main": [[{ "node": "Normalizar", "type": "main", "index": 0 }]] },
+    "Normalizar": { "main": [[{ "node": "IA Classifica", "type": "main", "index": 0 }]] },
+    "IA Classifica": { "main": [[{ "node": "Aplicar Enriquecimento IA", "type": "main", "index": 0 }]] },
+    "Aplicar Enriquecimento IA": { "main": [[{ "node": "Upsert com IA", "type": "main", "index": 0 }]] },
+    "Upsert com IA": { "main": [[{ "node": "Split In Batches", "type": "main", "index": 1 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1",
+  "active": false,
+  "id": "integracao_nacional_ia",
+  "tags": []
+}
