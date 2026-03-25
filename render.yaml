@@ -1,106 +1,33 @@
 ﻿services:
+  # Backend - API FastAPI
   - type: web
     name: ebrasil-backend
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
+    env: python
+    plan: free
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_BACKEND
-        value: sqlite
-      - key: CORS_ORIGINS
-        value: https://SEU-FRONTEND.onrender.com,http://localhost:5173
+        value: sqlite # Ou 'mongo'/'postgres' se configurado
       - key: PORTAL_TRANSPARENCIA_API_KEY
-        sync: false
-      - key: MONGODB_URL
-        sync: false
-      - key: MONGODB_DB
-        value: transparencia
+        sync: false # Defina manualmente no painel do Render
+      - key: CORS_ORIGINS
+        value: '*' # Em produção, substitua pela URL do seu frontend
 
+  # Frontend - React (Static Site)
   - type: static
     name: ebrasil-frontend
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    pullRequestPreviewsEnabled: true
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    publishPath: ./frontend/dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://SEU-BACKEND.onrender.com
+        fromService:
+          type: web
+          name: ebrasil-backend
+          property: url
 
-  # n8n (workflows) - roda como servico separado do backend/frontend.
-  # Recomendo apontar DB_* para um Postgres gerenciado (Render Postgres ou Supabase).
-  - type: web
-    name: ebrasil-n8n
-    runtime: docker
-    image:
-      url: n8nio/n8n:latest
-    plan: starter
-    healthCheckPath: /healthz
-    disk:
-      name: n8n-data
-      mountPath: /home/node/.n8n
-      sizeGB: 1
-    envVars:
-      - key: N8N_HOST
-        value: SEU-N8N.onrender.com
-      - key: N8N_PORT
-        value: 443
-      - key: N8N_PROTOCOL
-        value: https
-      - key: N8N_EDITOR_BASE_URL
-        value: https://SEU-N8N.onrender.com
-      - key: WEBHOOK_URL
-        value: https://SEU-N8N.onrender.com
-      - key: N8N_ENCRYPTION_KEY
-        sync: false
-      - key: N8N_BASIC_AUTH_ACTIVE
-        value: true
-      - key: N8N_BASIC_AUTH_USER
-        sync: false
-      - key: N8N_BASIC_AUTH_PASSWORD
-        sync: false
-      - key: N8N_SECURE_COOKIE
-        value: true
-      - key: N8N_BLOCK_ENV_ACCESS_IN_NODE
-        value: true
-      - key: GENERIC_TIMEZONE
-        value: America/Sao_Paulo
-      - key: TZ
-        value: America/Sao_Paulo
-      - key: DB_TYPE
-        value: postgresdb
-      - key: DB_POSTGRESDB_HOST
-        fromDatabase:
-          name: ebrasil-n8n-db
-          property: host
-      - key: DB_POSTGRESDB_PORT
-        fromDatabase:
-          name: ebrasil-n8n-db
-          property: port
-      - key: DB_POSTGRESDB_DATABASE
-        fromDatabase:
-          name: ebrasil-n8n-db
-          property: database
-      - key: DB_POSTGRESDB_USER
-        fromDatabase:
-          name: ebrasil-n8n-db
-          property: user
-      - key: DB_POSTGRESDB_PASSWORD
-        fromDatabase:
-          name: ebrasil-n8n-db
-          property: password
-      - key: DB_POSTGRESDB_SCHEMA
-        value: public
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: PORTAL_TRANSPARENCIA_API_KEY
-        sync: false
-      - key: SLACK_WEBHOOK_URL
-        sync: false
+  # Automação - n8n (Docker)
+  # (Removido do Blueprint por padrão: o `n8n/Dockerfile` não existe neste repo.)
 
-databases:
-  - name: ebrasil-n8n-db
-    plan: starter
-    databaseName: n8n
-    user: n8n_user
+databases: []

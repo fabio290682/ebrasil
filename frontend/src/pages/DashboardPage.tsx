@@ -1,4 +1,4 @@
-﻿import { useQuery } from '@tanstack/react-query'
+﻿﻿import { useQuery } from '@tanstack/react-query'
 import { DollarSign, Hash, TrendingUp, Building2 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -57,7 +57,7 @@ export function DashboardPage() {
           <h2 className="font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
             <Building2 size={16} className="text-green-500" /> Top Fornecedores
           </h2>
-          {topForn; topForn.length > 0 ? (
+          {topForn && topForn.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={topForn} layout="vertical" margin={{ left: 0, right: 16 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
@@ -78,7 +78,7 @@ export function DashboardPage() {
 
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 dark:text-white mb-4">Gastos por Função</h2>
-          {statsFuncao; statsFuncao.length > 0 ? (
+          {statsFuncao && statsFuncao.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
@@ -103,7 +103,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {evolucao; evolucao.length > 0; (
+      {evolucao && evolucao.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
           <h2 className="font-semibold text-slate-900 dark:text-white mb-4">Evolução Mensal</h2>
           <ResponsiveContainer width="100%" height={200}>

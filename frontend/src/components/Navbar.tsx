@@ -1,4 +1,5 @@
-﻿import { BarChart3, Search, Home, FileText, Map } from 'lucide-react'
+﻿import { BarChart3, Search, Home, FileText, Map, Sun, Moon } from 'lucide-react'
+import { useDarkMode } from '../hooks/useDarkMode'
 
 interface Props {
   active: string
@@ -14,6 +15,8 @@ const TABS = [
 ]
 
 export function Navbar({ active, onChange }: Props) {
+  const [isDark, setIsDark] = useDarkMode()
+
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -43,18 +46,29 @@ export function Navbar({ active, onChange }: Props) {
               </button>
             ))}
           </nav>
-          <div className="flex md:hidden gap-1">
-            {TABS.map(({ id, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => onChange(id)}
-                className={`p-2 rounded-lg transition-colors cursor-pointer ${
-                  active === id ? 'text-green-600' : 'text-slate-400'
-                }`}
-              >
-                <Icon size={18} />
-              </button>
-            ))}
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsDark(!isDark)}
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            >
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            <div className="flex md:hidden gap-1">
+              {TABS.map(({ id, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => onChange(id)}
+                  className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                    active === id ? 'text-green-600' : 'text-slate-400'
+                  }`}
+                >
+                  <Icon size={18} />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>

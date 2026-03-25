@@ -1,62 +1,51 @@
-import axios from 'axios'
-import type {
-  GastoListResponse,
-  GastosFilters,
-  ResumoGastos,
-  TopFornecedor,
-  Municipio,
-  StatFuncao,
-  StatUF,
-  StatCategoria,
-  EvolucaoMensal,
-} from './types'
+import type { GastosFilters, Gasto, Meta, Municipio, Resumo, TopFornecedor, StatsFuncao, EvolucaoMensal } from './types'
 
-const api = axios.create({ baseURL: '/api/v1' })
+function normalizeBaseUrl(value: string) {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return '/api/v1'
 
-function toParams(obj: Record<string, unknown>) {
-  const p: Record<string, string> = {}
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined && v !== null && v !== '') p[k] = String(v)
+  // If an absolute URL was provided without a path, assume the API prefix.
+  // Example: https://my-backend.onrender.com  -> https://my-backend.onrender.com/api/v1
+  if (/^https?:\/\/[^/]+$/i.test(trimmed)) return `${trimmed}/api/v1`
+
+  return trimmed
+}
+
+const BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL || '/api/v1')
+const IS_ABSOLUTE_BASE = /^https?:\/\//i.test(BASE_URL)
+
+async function request<T>(path: string, params?: Record<string, any>): Promise<T> {
+  const fullPath = `${BASE_URL}${path}`
+  const url = IS_ABSOLUTE_BASE ? new URL(fullPath) : new URL(fullPath, window.location.origin)
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.append(key, String(value))
+      }
+    })
   }
-  return p
+  const response = await fetch(url.toString())
+  if (!response.ok) throw new Error('Falha na requisição')
+  return response.json()
 }
 
-export async function fetchGastos(filters: GastosFilters): Promise<GastoListResponse> {
-  const { data } = await api.get('/gastos', { params: toParams(filters as Record<string, unknown>) })
-  return data
-}
+export const fetchGastos = (filters: GastosFilters) => 
+  request<{ items: Gasto[]; meta: Meta }>('/gastos', filters)
 
-export async function fetchResumo(filters: Omit<GastosFilters, 'page' | 'page_size' | 'elemento_despesa' | 'fornecedor'>): Promise<ResumoGastos> {
-  const { data } = await api.get('/gastos/resumo', { params: toParams(filters as Record<string, unknown>) })
-  return data
-}
+export const fetchMunicipios = (uf?: string) => 
+  request<Municipio[]>('/municipios', { uf })
 
-export async function fetchTopFornecedores(params: { limit?: number; data_inicio?: string; data_fim?: string; uf?: string; categoria_origem?: string }): Promise<TopFornecedor[]> {
-  const { data } = await api.get('/gastos/top-fornecedores', { params: toParams(params as Record<string, unknown>) })
-  return data
-}
+export const fetchResumo = (filters: any) => 
+  request<Resumo>('/gastos/resumo', filters)
 
-export async function fetchMunicipios(uf?: string): Promise<Municipio[]> {
-  const { data } = await api.get('/municipios', { params: uf ? { uf } : {} })
-  return data
-}
+export const fetchTopFornecedores = (params: { limit?: number }) => 
+  request<TopFornecedor[]>('/gastos/top-fornecedores', params)
 
-export async function fetchStatsFuncao(params?: { data_inicio?: string; data_fim?: string; uf?: string }): Promise<StatFuncao[]> {
-  const { data } = await api.get('/stats/por-funcao', { params: toParams((params ?? {}) as Record<string, unknown>) })
-  return data
-}
+export const fetchStatsFuncao = () => 
+  request<StatsFuncao[]>('/gastos/stats/funcao')
 
-export async function fetchStatsUF(params?: { data_inicio?: string; data_fim?: string }): Promise<StatUF[]> {
-  const { data } = await api.get('/stats/por-uf', { params: toParams((params ?? {}) as Record<string, unknown>) })
-  return data
-}
+export const fetchStatsCategoria = () => 
+  request<{ categoria: string; total: number }[]>('/gastos/stats/categoria')
 
-export async function fetchStatsCategoria(params?: { data_inicio?: string; data_fim?: string; uf?: string }): Promise<StatCategoria[]> {
-  const { data } = await api.get('/stats/por-categoria', { params: toParams((params ?? {}) as Record<string, unknown>) })
-  return data
-}
-
-export async function fetchEvolucaoMensal(params?: { data_inicio?: string; data_fim?: string; uf?: string }): Promise<EvolucaoMensal[]> {
-  const { data } = await api.get('/stats/evolucao-mensal', { params: toParams((params ?? {}) as Record<string, unknown>) })
-  return data
-}
+export const fetchEvolucaoMensal = () => 
+  request<EvolucaoMensal[]>('/gastos/stats/evolucao')

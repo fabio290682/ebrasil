@@ -25,7 +25,7 @@ export function RankingsPage() {
           {l1 ? <div className="flex justify-center py-8"><Spinner /></div> : (
             <>
               <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={topForn} layout="vertical" margin={{ left: 4, right: 16 }}>
+                <BarChart data={topForn} layout="vertical" margin={{ left: 10, right: 30 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                   <XAxis type="number" tickFormatter={shortBRL} tick={{ fontSize: 10 }} />
                   <YAxis
@@ -35,7 +35,7 @@ export function RankingsPage() {
                     tick={{ fontSize: 10 }}
                     tickFormatter={(v: string) => v.length > 20 ? v.slice(0, 20) + '…' : v}
                   />
-                  <Tooltip formatter={(v: number) => formatBRL(v)} />
+                  <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                   <Bar dataKey="total_empenhado" fill="#10b981" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

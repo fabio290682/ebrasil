@@ -18,6 +18,8 @@ backend/data/
 .tmp/
 .snapshots/
 exports/
+.history/
+transparencia_filtrado_ajustado.csv
 
 # OS / editor
 .DS_Store
