@@ -1,48 +1,26 @@
-"""
-RPA control endpoints:
-  GET  /api/v1/rpa/fontes                 — list all data sources + status
-  GET  /api/v1/rpa/fontes/{id}            — detail for one source
-  PATCH /api/v1/rpa/fontes/{id}           — enable/disable or change interval
-  POST /api/v1/rpa/fontes/{id}/executar   — trigger a run immediately
-  POST /api/v1/rpa/executar-pendentes     — run all overdue sources
-  GET  /api/v1/rpa/logs                   — execution history
-  GET  /api/v1/rpa/logs/{log_id}          — single log detail
-  GET  /api/v1/rpa/status                 — scheduler status + running jobs
-"""
 from __future__ import annotations
 
-from datetime import timezone
+import threading
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..database import SessionLocal
+from ..database import get_db
 from ..models import RpaFonte, RpaLog
 from ..rpa import runner as rpa_runner_module
 from ..rpa import scheduler as rpa_scheduler
 
 router = APIRouter(prefix="/rpa", tags=["rpa"])
 
+_run_lock = threading.Lock()
 
-def _get_db():
-    with SessionLocal() as db:
-        yield db
-
-
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
 
 class FontePatch(BaseModel):
     ativa: Optional[bool] = None
     intervalo_horas: Optional[int] = None
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _fonte_to_dict(f: RpaFonte, is_running: bool = False) -> dict:
     return {
@@ -77,12 +55,8 @@ def _log_to_dict(log: RpaLog) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Fontes
-# ---------------------------------------------------------------------------
-
 @router.get("/fontes")
-def list_fontes(db: Session = Depends(_get_db)):
+def list_fontes(db: Session = Depends(get_db)):
     fontes = db.query(RpaFonte).order_by(RpaFonte.nome).all()
     return {
         "fontes": [_fonte_to_dict(f, f.id in rpa_runner_module._RUNNING) for f in fontes],
@@ -91,7 +65,7 @@ def list_fontes(db: Session = Depends(_get_db)):
 
 
 @router.get("/fontes/{fonte_id}")
-def get_fonte(fonte_id: str, db: Session = Depends(_get_db)):
+def get_fonte(fonte_id: str, db: Session = Depends(get_db)):
     fonte = db.query(RpaFonte).filter(RpaFonte.id == fonte_id).first()
     if not fonte:
         raise HTTPException(status_code=404, detail=f"Fonte '{fonte_id}' não encontrada.")
@@ -104,12 +78,12 @@ def get_fonte(fonte_id: str, db: Session = Depends(_get_db)):
     )
     return {
         **_fonte_to_dict(fonte, fonte_id in rpa_runner_module._RUNNING),
-        "historico_recente": [_log_to_dict(l) for l in logs],
+        "historico_recente": [_log_to_dict(lg) for lg in logs],
     }
 
 
 @router.patch("/fontes/{fonte_id}")
-def patch_fonte(fonte_id: str, body: FontePatch, db: Session = Depends(_get_db)):
+def patch_fonte(fonte_id: str, body: FontePatch, db: Session = Depends(get_db)):
     fonte = db.query(RpaFonte).filter(RpaFonte.id == fonte_id).first()
     if not fonte:
         raise HTTPException(status_code=404, detail=f"Fonte '{fonte_id}' não encontrada.")
@@ -122,10 +96,6 @@ def patch_fonte(fonte_id: str, body: FontePatch, db: Session = Depends(_get_db))
     db.commit()
     return _fonte_to_dict(fonte)
 
-
-# ---------------------------------------------------------------------------
-# Execution
-# ---------------------------------------------------------------------------
 
 async def _bg_run(fonte_id: str, kwargs: dict):
     from ..database import SessionLocal
@@ -141,16 +111,18 @@ async def executar_fonte(
     ano: Optional[int] = Query(default=None),
     deputados_limit: int = Query(default=10, ge=1, le=50),
     paginas: int = Query(default=3, ge=1, le=10),
-    db: Session = Depends(_get_db),
+    db: Session = Depends(get_db),
 ):
-    """Trigger a fonte to run immediately (async background task)."""
     fonte = db.query(RpaFonte).filter(RpaFonte.id == fonte_id).first()
     if not fonte:
         raise HTTPException(status_code=404, detail=f"Fonte '{fonte_id}' não encontrada.")
     if not fonte.ativa:
         raise HTTPException(status_code=400, detail="Fonte desativada. Ative-a antes de executar.")
-    if fonte_id in rpa_runner_module._RUNNING:
-        raise HTTPException(status_code=409, detail=f"Fonte '{fonte_id}' já está em execução.")
+
+    with _run_lock:
+        if fonte_id in rpa_runner_module._RUNNING:
+            raise HTTPException(status_code=409, detail=f"Fonte '{fonte_id}' já está em execução.")
+        rpa_runner_module._RUNNING.add(fonte_id)
 
     kwargs: dict = {"paginas": paginas}
     if ano:
@@ -165,7 +137,6 @@ async def executar_fonte(
 
 @router.post("/executar-pendentes")
 async def executar_pendentes(background_tasks: BackgroundTasks):
-    """Trigger all overdue active fontes."""
     async def _run_all():
         from ..database import SessionLocal
         with SessionLocal() as db:
@@ -176,16 +147,12 @@ async def executar_pendentes(background_tasks: BackgroundTasks):
     return {"status": "iniciado", "mensagem": "Verificação de fontes pendentes iniciada."}
 
 
-# ---------------------------------------------------------------------------
-# Logs
-# ---------------------------------------------------------------------------
-
 @router.get("/logs")
 def list_logs(
     fonte_id: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
-    db: Session = Depends(_get_db),
+    db: Session = Depends(get_db),
 ):
     q = db.query(RpaLog)
     if fonte_id:
@@ -193,20 +160,16 @@ def list_logs(
     if status:
         q = q.filter(RpaLog.status == status)
     logs = q.order_by(RpaLog.iniciado_em.desc()).limit(limit).all()
-    return {"logs": [_log_to_dict(l) for l in logs], "total": len(logs)}
+    return {"logs": [_log_to_dict(lg) for lg in logs], "total": len(logs)}
 
 
 @router.get("/logs/{log_id}")
-def get_log(log_id: str, db: Session = Depends(_get_db)):
+def get_log(log_id: str, db: Session = Depends(get_db)):
     log = db.query(RpaLog).filter(RpaLog.id == log_id).first()
     if not log:
         raise HTTPException(status_code=404, detail="Log não encontrado.")
     return _log_to_dict(log)
 
-
-# ---------------------------------------------------------------------------
-# Scheduler status
-# ---------------------------------------------------------------------------
 
 @router.get("/status")
 def get_rpa_status():
