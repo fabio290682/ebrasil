@@ -1,33 +1,72 @@
-﻿services:
-  # Backend - API FastAPI
+databases:
+  # PostgreSQL persistente — dados sobrevivem a restarts
+  - name: ebrasil-db
+    plan: free
+    databaseName: ebrasil
+    user: ebrasil
+
+services:
+  # Backend — FastAPI
   - type: web
     name: ebrasil-backend
     env: python
-    plan: free
+    plan: starter
     buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2 --log-level info
+    healthCheckPath: /health
+    healthCheckInterval: 30
     envVars:
-      - key: DATABASE_BACKEND
-        value: sqlite # Ou 'mongo'/'postgres' se configurado
-      - key: PORTAL_TRANSPARENCIA_API_KEY
-        sync: false # Defina manualmente no painel do Render
-      - key: CORS_ORIGINS
-        value: '*' # Em produção, substitua pela URL do seu frontend
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11.0"
 
-  # Frontend - React (Static Site)
+      # Banco de dados PostgreSQL (injetado automaticamente pelo Render)
+      - key: DATABASE_BACKEND
+        value: postgres
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ebrasil-db
+          property: connectionString
+
+      # Segurança — JWT (Render gera automaticamente)
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+      # CORS — URL do frontend gerada automaticamente
+      - key: CORS_ORIGINS
+        fromService:
+          type: static
+          name: ebrasil-frontend
+          property: url
+
+      # Hosts permitidos (TrustedHostMiddleware)
+      - key: ALLOWED_HOSTS
+        value: "*.onrender.com,localhost,127.0.0.1"
+
+      # Workers e prefixo da API
+      - key: WORKERS
+        value: "2"
+      - key: API_PREFIX
+        value: /api/v1
+
+      # Chaves externas — configure manualmente no painel Render
+      - key: PORTAL_TRANSPARENCIA_API_KEY
+        sync: false   # Registre em: https://portaldatransparencia.gov.br/api-de-dados/cadastrar-email
+      - key: ANTHROPIC_API_KEY
+        sync: false   # Obtenha em: https://console.anthropic.com
+
+  # Frontend — React estático
   - type: static
     name: ebrasil-frontend
-    env: static
     buildCommand: cd frontend && npm install && npm run build
     publishPath: ./frontend/dist
     envVars:
+      # URL do backend injetada automaticamente (sem /api/v1 — App.tsx já inclui nos paths)
       - key: VITE_API_BASE_URL
         fromService:
           type: web
           name: ebrasil-backend
           property: url
-
-  # Automação - n8n (Docker)
-  # (Removido do Blueprint por padrão: o `n8n/Dockerfile` não existe neste repo.)
-
-databases: []
+      - key: NODE_ENV
+        value: production

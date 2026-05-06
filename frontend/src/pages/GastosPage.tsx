@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, ChevronLeft, ChevronRight, ExternalLink, Download, XCircle, Landmark, History, ShieldCheck } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, ExternalLink, Download, XCircle, Landmark, History, ShieldCheck, CheckCircle, X } from 'lucide-react'
 import { fetchGastos, fetchMunicipios, fetchResumo } from '../api'
 import { Spinner } from '../components/Spinner'
 import { Badge } from '../components/Badge'
@@ -13,6 +13,28 @@ export function GastosPage() {
   const [filters, setFilters] = useState<GastosFilters>({ page: 1, page_size: 20 })
   const [draft, setDraft] = useState<GastosFilters>({})
   const [showAudit, setShowAudit] = useState(false)
+  const [isExporting, setIsExporting] = useState<string | null>(null)
+  const [showToast, setShowToast] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showExportMenu) return
+    function handleClick(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showExportMenu])
+
+  useEffect(() => {
+    if (showToast) {
+      const timer = setTimeout(() => setShowToast(false), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [showToast])
 
   const { data, isLoading } = useQuery({
     queryKey: ['gastos', filters],
@@ -39,21 +61,51 @@ export function GastosPage() {
     setFilters({ page: 1, page_size: 20 })
   }
 
-  function handleExport() {
+  async function handleExport(format: 'csv' | 'xlsx' | 'pdf') {
+    setIsExporting(format)
+    setShowExportMenu(false)
+
     const params = new URLSearchParams()
     Object.entries(filters).forEach(([key, value]) => {
       if (value) params.append(key, String(value))
     })
-    // Remove paginação para exportar o lote completo
     params.delete('page')
     params.delete('page_size')
-    const rawBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+    const rawBase = import.meta.env.VITE_API_BASE_URL || ''
     const baseUrl = rawBase.replace(/\/+$/, '')
-    const isAbsolute = /^https?:\/\//i.test(baseUrl)
-    const exportUrl = isAbsolute
-      ? new URL(`${baseUrl}/gastos/export/csv?${params.toString()}`)
-      : new URL(`${baseUrl}/gastos/export/csv?${params.toString()}`, window.location.origin)
-    window.open(exportUrl.toString(), '_blank')
+    const exportUrl = `${baseUrl}/api/v1/gastos/export/${format}?${params.toString()}`
+
+    const ext = format
+    const mimeMap = {
+      csv: 'text/csv',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      pdf: 'application/pdf',
+    }
+
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(exportUrl, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!response.ok) throw new Error('Falha ao exportar dados')
+
+      const blob = new Blob([await response.arrayBuffer()], { type: mimeMap[format] })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `gastos_ebrasil_${new Date().toISOString().split('T')[0]}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setShowToast(true)
+    } catch (error) {
+      console.error('Erro na exportação:', error)
+      alert('Não foi possível exportar os dados.')
+    } finally {
+      setIsExporting(null)
+    }
   }
 
   function setPage(p: number) {
@@ -179,13 +231,36 @@ export function GastosPage() {
             >
               <Search size={14} /> Filtrar
             </button>
-            <button
-              onClick={handleExport}
-              title="Exportar CSV"
-              className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer"
-            >
-              <Download size={14} />
-            </button>
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                disabled={!!isExporting}
+                title="Exportar dados"
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+              >
+                {isExporting ? <Spinner size={14} /> : <Download size={14} />}
+                <span className="hidden sm:inline">Exportar</span>
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 mt-1 z-30 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg overflow-hidden min-w-[140px]">
+                  {[
+                    { fmt: 'csv'  as const, label: 'CSV',   icon: '📄', desc: 'Excel / Sheets' },
+                    { fmt: 'xlsx' as const, label: 'Excel', icon: '📊', desc: '.xlsx' },
+                    { fmt: 'pdf'  as const, label: 'PDF',   icon: '📋', desc: 'Relatório' },
+                  ].map(({ fmt, label, icon, desc }) => (
+                    <button
+                      key={fmt}
+                      onClick={() => handleExport(fmt)}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left"
+                    >
+                      <span>{icon}</span>
+                      <span className="font-medium">{label}</span>
+                      <span className="text-xs text-slate-400 ml-auto">{desc}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowAudit(true)}
               title="Log de Auditoria"
@@ -330,6 +405,22 @@ export function GastosPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Notificação de Sucesso (Toast) */}
+      {showToast && (
+        <div className="fixed bottom-5 right-5 z-[100] flex items-center gap-3 px-4 py-3 bg-emerald-600 text-white rounded-xl shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle size={18} />
+          <span className="text-sm font-medium">Exportação concluída com sucesso!</span>
+          <button
+            onClick={() => setShowToast(false)}
+            className="ml-1 p-1 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+            title="Fechar"
+            aria-label="Fechar notificação"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

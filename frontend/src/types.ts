@@ -10,6 +10,12 @@ export interface Gasto {
   url_origem?: string
   municipio_ibge?: string
   partido?: string
+  categoria_origem?: string
+  favorecido_cnpj_cpf?: string
+  elemento_despesa?: string
+  fonte_recurso?: string
+  numero_empenho?: string
+  tipo_despesa?: string
 }
 
 export interface Meta {
@@ -29,6 +35,8 @@ export interface GastosFilters {
   data_inicio?: string
   data_fim?: string
   partido?: string
+  categoria_origem?: string
+  elemento_despesa?: string
 }
 
 export interface Municipio {

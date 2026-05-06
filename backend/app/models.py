@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -43,3 +43,34 @@ class GastoPublico(Base):
     fornecedor_sistema: Mapped[str | None] = mapped_column(String(50))
     url_origem: Mapped[str | None] = mapped_column(Text)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class RpaFonte(Base):
+    """Configuration record for each RPA data source."""
+    __tablename__ = "rpa_fontes"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # slug e.g. "camara"
+    nome: Mapped[str] = mapped_column(String(100), nullable=False)
+    descricao: Mapped[str | None] = mapped_column(Text)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)  # "api" | "scraper"
+    url_base: Mapped[str | None] = mapped_column(String(255))
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    intervalo_horas: Mapped[int] = mapped_column(Integer, default=24)
+    ultima_execucao: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    proxima_execucao: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RpaLog(Base):
+    """Execution log for each RPA job run."""
+    __tablename__ = "rpa_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    fonte_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # pending|running|success|error|partial
+    registros_buscados: Mapped[int] = mapped_column(Integer, default=0)
+    registros_salvos: Mapped[int] = mapped_column(Integer, default=0)
+    registros_duplicados: Mapped[int] = mapped_column(Integer, default=0)
+    iniciado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    finalizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mensagem: Mapped[str | None] = mapped_column(Text)
