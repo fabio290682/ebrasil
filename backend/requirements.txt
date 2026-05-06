@@ -4,28 +4,26 @@ uvicorn[standard]==0.30.0
 sqlalchemy==2.0.35
 pydantic==2.9.2
 pydantic-settings==2.4.0
-pymongo==4.10.1
-
-# Performance & Caching
-redis==5.2.0
 python-multipart==0.0.7
+
+# PostgreSQL
+psycopg2-binary>=2.9.9
 
 # Rate Limiting & Security
 slowapi==0.1.9
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-cryptography==43.0.0
 
 # HTTP & Async
 httpx==0.27.0
 aiofiles==23.2.1
 
-# PostgreSQL driver
-psycopg2-binary>=2.9.9
-
 # Export formats
 openpyxl>=3.1.0
 fpdf2>=2.7.9
+
+# Scheduler (RPA)
+apscheduler>=3.10.0
 
 # Database Migrations
 alembic==1.13.2
@@ -33,9 +31,8 @@ alembic==1.13.2
 # Environment & Config
 python-dotenv==1.0.1
 
-# Logging & Monitoring
+# Logging
 structlog==24.4.0
-python-json-logger==2.0.8
 
 # Machine Learning
 scikit-learn>=1.5.0
