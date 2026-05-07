@@ -1,4 +1,4 @@
-﻿from datetime import date
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -7,10 +7,14 @@ from sqlalchemy.orm import Session
 from ..config import DATABASE_BACKEND
 from ..database import get_db
 from ..models import GastoPublico
-from ..services import mongo_query
-from ..services.query import apply_gasto_filters
+from ..services.query import apply_gasto_filters, month_label
 
 router = APIRouter(prefix="/stats", tags=["stats"])
+
+
+def _mongo_query():
+    from ..services import mongo_query
+    return mongo_query
 
 
 @router.get("/por-funcao")
@@ -21,7 +25,8 @@ def gastos_por_funcao(
     db: Session = Depends(get_db),
 ):
     if DATABASE_BACKEND == "mongo":
-        rows = mongo_query.grouped_stats("funcao_governo", "funcao", data_inicio=data_inicio, data_fim=data_fim, uf=uf)
+        mq = _mongo_query()
+        rows = mq.grouped_stats("funcao_governo", "funcao", data_inicio=data_inicio, data_fim=data_fim, uf=uf)
         return [{"funcao": r.get("funcao") or "Nao informado", "total": r["total"], "qtd": r["qtd"]} for r in rows]
 
     stmt = select(
@@ -31,7 +36,7 @@ def gastos_por_funcao(
     ).group_by(GastoPublico.funcao_governo)
     stmt = apply_gasto_filters(stmt, data_inicio=data_inicio, data_fim=data_fim, uf=uf)
     rows = db.execute(stmt.order_by(func.sum(GastoPublico.valor_empenhado).desc())).all()
-    return [{"funcao": r[0] or "NÃ£o informado", "total": float(r[1] or 0), "qtd": int(r[2] or 0)} for r in rows]
+    return [{"funcao": r[0] or "Não informado", "total": float(r[1] or 0), "qtd": int(r[2] or 0)} for r in rows]
 
 
 @router.get("/por-uf")
@@ -41,7 +46,8 @@ def gastos_por_uf(
     db: Session = Depends(get_db),
 ):
     if DATABASE_BACKEND == "mongo":
-        rows = mongo_query.grouped_stats("uf", "uf", data_inicio=data_inicio, data_fim=data_fim)
+        mq = _mongo_query()
+        rows = mq.grouped_stats("uf", "uf", data_inicio=data_inicio, data_fim=data_fim)
         return [{"uf": r.get("uf") or "N/A", "total": r["total"], "qtd": r["qtd"]} for r in rows]
 
     stmt = select(
@@ -62,7 +68,8 @@ def gastos_por_categoria(
     db: Session = Depends(get_db),
 ):
     if DATABASE_BACKEND == "mongo":
-        rows = mongo_query.grouped_stats("categoria_origem", "categoria", data_inicio=data_inicio, data_fim=data_fim, uf=uf)
+        mq = _mongo_query()
+        rows = mq.grouped_stats("categoria_origem", "categoria", data_inicio=data_inicio, data_fim=data_fim, uf=uf)
         return [{"categoria": r.get("categoria") or "Municipal", "total": r["total"], "qtd": r["qtd"]} for r in rows]
 
     stmt = select(
@@ -83,13 +90,15 @@ def evolucao_mensal(
     db: Session = Depends(get_db),
 ):
     if DATABASE_BACKEND == "mongo":
-        return mongo_query.evolucao_mensal(data_inicio=data_inicio, data_fim=data_fim, uf=uf)
+        mq = _mongo_query()
+        return mq.evolucao_mensal(data_inicio=data_inicio, data_fim=data_fim, uf=uf)
 
+    mes_expr = month_label(GastoPublico.data_empenho)
     stmt = select(
-        func.strftime("%Y-%m", GastoPublico.data_empenho).label("mes"),
+        mes_expr.label("mes"),
         func.sum(GastoPublico.valor_empenhado).label("total"),
         func.count(GastoPublico.id).label("qtd"),
-    ).group_by(func.strftime("%Y-%m", GastoPublico.data_empenho))
+    ).group_by(mes_expr)
     stmt = apply_gasto_filters(stmt, data_inicio=data_inicio, data_fim=data_fim, uf=uf)
     rows = db.execute(stmt.order_by("mes")).all()
     return [{"mes": r[0], "total": float(r[1] or 0), "qtd": int(r[2] or 0)} for r in rows]
@@ -103,7 +112,8 @@ def gastos_por_elemento(
     db: Session = Depends(get_db),
 ):
     if DATABASE_BACKEND == "mongo":
-        rows = mongo_query.grouped_stats("elemento_despesa", "elemento", data_inicio=data_inicio, data_fim=data_fim, uf=uf)
+        mq = _mongo_query()
+        rows = mq.grouped_stats("elemento_despesa", "elemento", data_inicio=data_inicio, data_fim=data_fim, uf=uf)
         return [{"elemento": r.get("elemento") or "Nao informado", "total": r["total"], "qtd": r["qtd"]} for r in rows]
 
     stmt = select(
@@ -113,7 +123,7 @@ def gastos_por_elemento(
     ).group_by(GastoPublico.elemento_despesa)
     stmt = apply_gasto_filters(stmt, data_inicio=data_inicio, data_fim=data_fim, uf=uf)
     rows = db.execute(stmt.order_by(func.sum(GastoPublico.valor_empenhado).desc())).all()
-    return [{"elemento": r[0] or "NÃ£o informado", "total": float(r[1] or 0), "qtd": int(r[2] or 0)} for r in rows]
+    return [{"elemento": r[0] or "Não informado", "total": float(r[1] or 0), "qtd": int(r[2] or 0)} for r in rows]
 
 
 @router.get("/por-partido")
@@ -123,7 +133,8 @@ def gastos_por_partido(
     db: Session = Depends(get_db),
 ):
     if DATABASE_BACKEND == "mongo":
-        rows = mongo_query.grouped_stats("partido", "partido", data_inicio=data_inicio, data_fim=data_fim)
+        mq = _mongo_query()
+        rows = mq.grouped_stats("partido", "partido", data_inicio=data_inicio, data_fim=data_fim)
         return [{"partido": r.get("partido"), "total": r["total"], "qtd": r["qtd"]} for r in rows if r.get("partido")]
 
     stmt = select(

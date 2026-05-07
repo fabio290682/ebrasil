@@ -3,7 +3,15 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import DATABASE_URL
 from ..models import GastoPublico, Municipio
+
+
+def month_label(col):
+    """YYYY-MM grouping expression compatible with both SQLite and PostgreSQL."""
+    if DATABASE_URL.startswith("sqlite"):
+        return func.strftime("%Y-%m", col)
+    return func.to_char(col, "YYYY-MM")
 
 
 def apply_gasto_filters(

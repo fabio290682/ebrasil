@@ -27,6 +27,11 @@ if %errorlevel% neq 0 (
 :: Instala dependencias do backend se necessario
 echo [1/4] Verificando dependencias do backend...
 cd backend
+if not exist ".venv" (
+    echo      Criando ambiente virtual...
+    python -m venv .venv
+)
+call .venv\Scripts\activate.bat
 pip install -r requirements.txt -q --disable-pip-version-check
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao instalar dependencias Python
@@ -38,9 +43,13 @@ cd ..
 :: Instala dependencias do frontend se necessario
 echo [2/4] Verificando dependencias do frontend...
 cd frontend
-if not exist "node_modules" (
-    echo      Instalando node_modules...
-    npm install --silent
+if not exist "node_modules\vite" (
+    echo      Instalando node_modules com pnpm...
+    where pnpm >nul 2>&1 && (
+        pnpm install
+    ) || (
+        npm install --legacy-peer-deps --silent
+    )
 )
 cd ..
 
@@ -63,7 +72,8 @@ if not exist ".env" (
 echo [4/4] Iniciando servidores...
 echo.
 echo  Backend:  http://localhost:8000
-echo  Frontend: http://localhost:5173
+echo  Frontend: 
+
 echo  API Docs: http://localhost:8000/docs
 echo.
 echo  Pressione Ctrl+C em cada janela para parar.

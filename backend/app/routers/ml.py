@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import GastoPublico
 from ..ml import anomaly_detector, data_fetcher, forecaster, risk_scorer
+from ..services.query import month_label
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -91,12 +92,13 @@ def get_previsao(
     periodos: int = Query(default=3, ge=1, le=12),
     db: Session = Depends(get_db),
 ):
+    mes_expr = month_label(GastoPublico.data_empenho)
     rows = (
         db.query(
-            func.strftime("%Y-%m", GastoPublico.data_empenho).label("mes"),
+            mes_expr.label("mes"),
             func.sum(GastoPublico.valor_empenhado).label("total"),
         )
-        .group_by(func.strftime("%Y-%m", GastoPublico.data_empenho))
+        .group_by(mes_expr)
         .order_by("mes")
         .all()
     )
