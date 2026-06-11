@@ -1,0 +1,47 @@
+# Backend files (not deployed)
+backend/
+scripts/
+dags/
+mvp/
+n8n/
+dbt/
+
+# Database files
+*.db
+*.sqlite
+
+# Environment files (except example)
+.env
+
+# Documentation (optional)
+*.md
+docs/
+
+# Git and version control
+.git
+.gitignore
+.github
+
+# Cache and temp
+.tmp/
+.snapshots/
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+
+# Development only
+.history/
+.vscode/
+.devcontainer/
+
+# Export files (large)
+exports/
+
+# CI/CD
+.github/
+Dockerfile
+docker-compose.yml
+railway.toml
+render.yaml
+Makefile
